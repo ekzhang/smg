@@ -64,6 +64,8 @@ pub struct AppContext {
     pub inflight_tracker: Arc<InFlightRequestTracker>,
     pub kv_event_monitor: Option<Arc<KvEventMonitor>>,
     pub realtime_registry: Arc<RealtimeRegistry>,
+    /// Bind address for WebRTC UDP sockets (`None` = `0.0.0.0`, auto-detect).
+    pub webrtc_bind_addr: Option<std::net::IpAddr>,
 }
 
 impl std::fmt::Debug for AppContext {
@@ -93,6 +95,7 @@ pub struct AppContextBuilder {
     mcp_orchestrator: Option<Arc<OnceLock<Arc<McpOrchestrator>>>>,
     wasm_manager: Option<Arc<WasmModuleManager>>,
     kv_event_monitor: Option<Arc<KvEventMonitor>>,
+    webrtc_bind_addr: Option<std::net::IpAddr>,
 }
 
 impl AppContext {
@@ -139,6 +142,7 @@ impl AppContextBuilder {
             mcp_orchestrator: None,
             wasm_manager: None,
             kv_event_monitor: None,
+            webrtc_bind_addr: None,
         }
     }
 
@@ -244,6 +248,11 @@ impl AppContextBuilder {
         self
     }
 
+    pub fn webrtc_bind_addr(mut self, addr: Option<std::net::IpAddr>) -> Self {
+        self.webrtc_bind_addr = addr;
+        self
+    }
+
     pub fn build(self) -> Result<AppContext, AppContextBuildError> {
         let router_config = self
             .router_config
@@ -303,6 +312,7 @@ impl AppContextBuilder {
             inflight_tracker: InFlightRequestTracker::new(),
             kv_event_monitor: self.kv_event_monitor,
             realtime_registry: Arc::new(RealtimeRegistry::new()),
+            webrtc_bind_addr: self.webrtc_bind_addr,
         })
     }
 
