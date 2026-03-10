@@ -29,7 +29,27 @@ env:
   GENAI_BENCH_IMAGE: ghcr.io/moirai-internal/genai-bench:0.0.3
 
 jobs:
+  # === CI Gates ===
+
+  ci-gate:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - run: echo "CI enabled"
+
+  gpu-ci-gate:
+    needs: [ci-gate]
+    runs-on: ubuntu-latest
+    permissions: {}
+    environment: ${{ github.event_name == 'pull_request' && 'gpu-ci' || '' }}
+    steps:
+      - run: echo "GPU CI approved"
+
+  # === Tier 1: CPU jobs (ungated, run on all non-draft PRs) ===
+
   pre-commit:
+    needs: [ci-gate]
     runs-on: k8s-runner-cpu
     permissions:
       contents: read
@@ -50,6 +70,7 @@ jobs:
         run: pre-commit run --all-files --show-diff-on-failure
 
   python-lint:
+    needs: [ci-gate]
     runs-on: k8s-runner-cpu
     permissions:
       contents: read
@@ -77,6 +98,7 @@ jobs:
         run: mypy bindings/python/ --config-file mypy.ini
 
   grpc-proto-build-check:
+    needs: [ci-gate]
     runs-on: k8s-runner-cpu
     permissions:
       contents: read
@@ -102,7 +124,10 @@ jobs:
           pip install crates/grpc_client/python/dist/*.whl
           python -c "from smg_grpc_proto import sglang_scheduler_pb2; print('OK')"
 
+  # === Tier 2: GPU jobs (gated behind gpu-ci environment approval) ===
+
   build-wheel:
+    needs: [gpu-ci-gate]
     runs-on: k8s-runner-gpu
     permissions:
       contents: read
@@ -233,6 +258,7 @@ jobs:
           pytest -q tests --cov=smg --cov-config=.coveragerc --cov-report=term-missing --cov-fail-under=80
 
   unit-tests:
+    needs: [ci-gate]
     runs-on: k8s-runner-cpu
     permissions:
       contents: read
@@ -345,6 +371,7 @@ jobs:
           path: benchmark_**/
 
   detect-changes:
+    needs: [ci-gate]
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
@@ -853,8 +880,8 @@ jobs:
           path: benchmark_go_bindings/
 
   finish:
-    needs: [pre-commit, python-lint, grpc-proto-build-check, build-wheel, python-unit-tests, unit-tests, benchmarks, e2e-1gpu-chat, e2e-1gpu-embeddings, e2e-1gpu-gateway, e2e-2gpu-chat, e2e-2gpu-responses, e2e-2gpu-pd, e2e-4gpu-chat, e2e-vendor, go-unit-tests, go-bindings-e2e]
-    if: always()
+    needs: [ci-gate, pre-commit, python-lint, grpc-proto-build-check, build-wheel, python-unit-tests, unit-tests, benchmarks, e2e-1gpu-chat, e2e-1gpu-embeddings, e2e-1gpu-gateway, e2e-2gpu-chat, e2e-2gpu-responses, e2e-2gpu-pd, e2e-4gpu-chat, e2e-vendor, go-unit-tests, go-bindings-e2e]
+    if: always() && needs.ci-gate.result == 'success'
     runs-on: k8s-runner-cpu
     permissions: {}
     steps:
