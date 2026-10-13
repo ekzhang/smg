@@ -40,6 +40,7 @@ pub struct ServerInfo {
     pub served_model_name: Option<String>,
     pub tp_size: Option<usize>,
     pub dp_size: Option<usize>,
+    pub attn_dp_size: Option<usize>,
     pub pp_size: Option<usize>,
     pub load_balance_method: Option<String>,
     pub disaggregation_mode: Option<String>,
@@ -700,21 +701,27 @@ mod tests {
         // Subset of an actual SGLang /server_info response. The full payload has
         // many more fields; `serde(deny_unknown_fields)` is off by default so
         // they're silently ignored.
-        let body = serde_json::json!({
-            "model_path": "Qwen/Qwen3-8B",
-            "tp_size": 1,
-            "dp_size": 1,
-            "max_running_requests": 256,
-            "context_length": 32768,
-        });
-        let info: ServerInfo = serde_json::from_value(body).expect("deserialize ServerInfo");
-        assert_eq!(info.max_running_requests, Some(256));
+        for (dp_size, attn_dp_size) in [(4, None), (1, Some(4))] {
+            let body = serde_json::json!({
+                "model_path": "Qwen/Qwen3-8B",
+                "tp_size": 4,
+                "dp_size": dp_size,
+                "attn_dp_size": attn_dp_size,
+                "max_running_requests": 256,
+                "context_length": 32768,
+            });
+            let info: ServerInfo = serde_json::from_value(body).expect("deserialize ServerInfo");
+            assert_eq!(info.max_running_requests, Some(256));
+            assert_eq!(info.attn_dp_size, attn_dp_size);
 
-        let labels = flat_labels(&info);
-        assert_eq!(
-            labels.get("max_running_requests").map(String::as_str),
-            Some("256")
-        );
+            let labels = flat_labels(&info);
+            assert_eq!(
+                labels.get("max_running_requests").map(String::as_str),
+                Some("256")
+            );
+            let dp_info = super::super::discover_dp::dp_info_from_labels(&labels).unwrap();
+            assert_eq!(dp_info.dp_size, 4);
+        }
     }
 
     #[test]
